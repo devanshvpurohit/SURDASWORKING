@@ -2,3 +2,4 @@ streamlit
 requests
 Pillow
 geocoder
+opencv-python
