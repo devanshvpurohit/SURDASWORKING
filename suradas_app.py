@@ -10,7 +10,7 @@ import os
 ON_CLOUD = os.getenv("IS_STREAMLIT_CLOUD", "true") == "true"
 
 # Hugging Face Token
-API_TOKEN = st.secrets["HUGGINGFACE_API_TOKEN"]
+API_TOKEN = "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"
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
 st.set_page_config(page_title="Suradas AI Agent", layout="centered")
