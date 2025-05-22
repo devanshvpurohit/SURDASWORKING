@@ -5,7 +5,7 @@ from PIL import Image
 import geocoder
 import base64
 
-API_TOKEN = st.secrets["HUGGINGFACE_API_TOKEN"]
+API_TOKEN = "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"
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
 # For IP-based location
