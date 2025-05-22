@@ -1,28 +1,46 @@
-# suradas_app.py
 import streamlit as st
+import cv2
 import requests
+import tempfile
 from PIL import Image
 import geocoder
 import base64
 import os
+import time
 
-# Detect if running on Streamlit Cloud
-ON_CLOUD = os.getenv("IS_STREAMLIT_CLOUD", "true") == "true"
-
-# Hugging Face Token
 API_TOKEN = "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"
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
-st.set_page_config(page_title="Suradas AI Agent", layout="centered")
-st.title("🦾 Suradas: AI Agent for the Visually Impaired")
-
-# 📍 GPS Location
-
+# For IP-based location
 def get_location():
-    g = geocoder.ip('me')
+    g = geocoder.ip("me")
     return f"{g.city}, {g.country}"
 
-# 🔊 Text-to-Speech (Hugging Face)
+# Convert OpenCV frame to PIL
+def get_frame_from_camera():
+    cam = cv2.VideoCapture(0)
+    ret, frame = cam.read()
+    cam.release()
+    if not ret:
+        st.error("Failed to access camera.")
+        return None
+    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(img)
+
+# Use Hugging Face LLaVA API for vision-language response
+def query_llava(image: Image, prompt: str):
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        image.save(tmp.name)
+        with open(tmp.name, "rb") as f:
+            response = requests.post(
+                "https://api-inference.huggingface.co/models/llava-hf/llava-1.5-7b-hf",
+                headers=headers,
+                files={"image": f},
+                data={"inputs": prompt}
+            )
+    return response.json()
+
+# Text-to-Speech using Hugging Face API
 def text_to_speech(text):
     tts_url = "https://api-inference.huggingface.co/models/espnet/kan-bayashi_ljspeech_vits"
     payload = {"inputs": text}
@@ -39,42 +57,37 @@ def text_to_speech(text):
     else:
         st.error("TTS failed.")
 
-# 🖼️ Object Detection + Captioning
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+# App UI
+st.set_page_config(page_title="Suradas AI Live", layout="wide")
+st.title("🦾 Suradas Live - 24/7 Object Understanding")
 
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-
-    # 🧠 Object Detection
-    with st.spinner("Detecting objects..."):
-        od_url = "https://api-inference.huggingface.co/models/facebook/detr-resnet-50"
-        od_response = requests.post(od_url, headers=headers, files={"file": uploaded_file})
-        if od_response.status_code == 200:
-            objects = od_response.json()
-            st.subheader("Detected Objects")
-            for obj in objects:
-                st.write(f"- {obj['label']} ({round(obj['score'] * 100, 2)}%)")
-        else:
-            st.error("Object detection failed.")
-
-    # 🧠 Image Captioning
-    with st.spinner("Generating image caption..."):
-        cap_url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
-        cap_response = requests.post(cap_url, headers=headers, files={"file": uploaded_file})
-        if cap_response.status_code == 200:
-            caption = cap_response.json()[0]['generated_text']
-            st.success(f"Caption: {caption}")
-            st.markdown("🔊 Audio feedback:")
-            text_to_speech(caption)
-        else:
-            st.error("Captioning failed.")
-
-# 📍 Location
-st.subheader("📍 Your Location")
+st.subheader("🌍 Your Location")
 location = get_location()
 st.write(location)
 
-# 🌐 Cloud Notice
-if ON_CLOUD:
-    st.info("Note: Voice input is disabled on Streamlit Cloud. Run locally for full features.")
+# Text input for manual prompt
+user_prompt = st.text_input("Ask the AI about your environment:", value="What do you see in this image?")
+
+# Interval in seconds
+interval = st.number_input("Detection Interval (seconds):", min_value=1, max_value=60, value=10)
+
+# Start looping live detection
+if st.button("Start Continuous Object Detection"):
+    st.warning("Streaming live camera... this works only locally.")
+    run = True
+    detection_placeholder = st.empty()
+    image_placeholder = st.empty()
+
+    while run:
+        image = get_frame_from_camera()
+        if image:
+            image_placeholder.image(image, caption="Live Camera Feed", use_column_width=True)
+            with st.spinner("Analyzing using LLaVA..."):
+                result = query_llava(image, user_prompt)
+                if isinstance(result, dict) and "generated_text" in result:
+                    output = result['generated_text']
+                    detection_placeholder.success(f"LLaVA: {output}")
+                    text_to_speech(output)
+                else:
+                    detection_placeholder.error("LLaVA response error.")
+        time.sleep(interval)
